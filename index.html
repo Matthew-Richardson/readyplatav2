@@ -43,6 +43,13 @@
     #incidentsActive.has-incidents{display:block}
     #noIncidentsMsg{display:none}
     #noIncidentsMsg.is-visible{display:block}
+    .rsg-card--shelter{background:#edf6ff;border-color:#1e6eb6}
+    .rsg-stripe--shelter{background:#8dc8f8}
+    .rsg-card--shelter .rsg-title{color:#124d7d}
+    .rsg-card--access{background:#f7f0fc;border-color:#824ab6}
+    .rsg-stripe--access{background:repeating-linear-gradient(135deg,#d9c5f4,#d9c5f4 4px,#824ab6 4px,#824ab6 6px)}
+    .rsg-card--access .rsg-title{color:#593278}
+    .rsg-card--shelter .rsg-header,.rsg-card--access .rsg-header{flex-direction:column;align-items:flex-start}
   </style>
 
   <link rel="stylesheet" href="shared-styles.css">
@@ -129,7 +136,7 @@
                   <div class="stage-tagline">La Plata County</div>
                   <div class="stage-headline">Stay Ready, Year-Round</div>
                   <div class="stage-body" style="margin-top:8px;max-width:780px;margin-left:auto;margin-right:auto;font-size:16px;line-height:1.55;">
-                    <p>La Plata County Office of Emergency Management (<strong>LPCOEM</strong>) — uses the Ready, Set, Go! system to establish evacuation zones. Click the incident map above to confirm your zone. During an incident your zone name and area is subject to change.</p>
+                    <p>La Plata County Office of Emergency Management (<strong>LPCOEM</strong>) — uses the Ready, Set, Go! system along with Shelter-In-Place and Access Impact Area zones to communicate public safety instructions. Select an active incident above to confirm your zone. During an incident your zone name and area is subject to change.</p>
                   </div>
                 </div>
 
@@ -173,6 +180,33 @@
                         </div>
                         <div class="rsg-body">
                           <p>Leave immediately. Imminent threat to life. Area is closed to public access.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="stage-subhead">Additional Public Safety Zones</div>
+                  <div class="rsg-pair">
+                    <div class="rsg-card rsg-card--shelter">
+                      <div class="rsg-stripe rsg-stripe--shelter"></div>
+                      <div class="rsg-content">
+                        <div class="rsg-header">
+                          <h2 class="rsg-title">Shelter-In-Place</h2>
+                          <span class="rsg-label">Stay Inside</span>
+                        </div>
+                        <div class="rsg-body">
+                          <p>Remain indoors and follow instructions from emergency officials. Check the incident details for guidance specific to your zone.</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="rsg-card rsg-card--access">
+                      <div class="rsg-stripe rsg-stripe--access"></div>
+                      <div class="rsg-content">
+                        <div class="rsg-header">
+                          <h2 class="rsg-title">Access Impact Area</h2>
+                          <span class="rsg-label">Road Access Impacts</span>
+                        </div>
+                        <div class="rsg-body">
+                          <p>Road access may be restricted or unavailable. Review incident details for road closures and access instructions.</p>
                         </div>
                       </div>
                     </div>
