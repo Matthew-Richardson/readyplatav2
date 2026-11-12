@@ -166,6 +166,22 @@
                 <span style="display:inline-block;width:22px;height:16px;border:2.5px solid rgba(11,77,162,0.8);border-radius:3px;background:transparent;"></span>
                 <span>County Boundary</span>
               </div>
+              <div class="legend-item">
+                <span style="display:inline-flex;width:24px;height:24px;" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#c62828" stroke="white" stroke-width="2"/><path d="M6 12h12" stroke="white" stroke-width="4"/></svg></span>
+                <span>Road Closure</span>
+              </div>
+              <div class="legend-item">
+                <span style="display:inline-flex;width:24px;height:24px;" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2L23 22H1Z" fill="#ffd54f" stroke="#5d4300" stroke-width="1.5"/><path d="M12 8v6" stroke="#302000" stroke-width="2.5"/><circle cx="12" cy="18" r="1.4" fill="#302000"/></svg></span>
+                <span>Warning</span>
+              </div>
+              <div class="legend-item">
+                <span style="display:inline-flex;width:24px;height:24px;" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1769aa" stroke="white" stroke-width="2"/><path d="M12 10v8" stroke="white" stroke-width="2.5"/><circle cx="12" cy="6.5" r="1.4" fill="white"/></svg></span>
+                <span>Info</span>
+              </div>
+              <div class="legend-item">
+                <span style="display:inline-block;width:24px;border-top:3px dashed #c62828;" aria-hidden="true"></span>
+                <span>Closed Road</span>
+              </div>
             </div>
           </div>
 
@@ -200,6 +216,22 @@
               <div class="legend-item">
                 <span style="display:inline-block;width:22px;height:16px;border:2.5px solid rgba(11,77,162,0.8);border-radius:3px;background:transparent;"></span>
                 <span>County Boundary</span>
+              </div>
+              <div class="legend-item">
+                <span style="display:inline-flex;width:24px;height:24px;" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#c62828" stroke="white" stroke-width="2"/><path d="M6 12h12" stroke="white" stroke-width="4"/></svg></span>
+                <span>Road Closure</span>
+              </div>
+              <div class="legend-item">
+                <span style="display:inline-flex;width:24px;height:24px;" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2L23 22H1Z" fill="#ffd54f" stroke="#5d4300" stroke-width="1.5"/><path d="M12 8v6" stroke="#302000" stroke-width="2.5"/><circle cx="12" cy="18" r="1.4" fill="#302000"/></svg></span>
+                <span>Warning</span>
+              </div>
+              <div class="legend-item">
+                <span style="display:inline-flex;width:24px;height:24px;" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1769aa" stroke="white" stroke-width="2"/><path d="M12 10v8" stroke="white" stroke-width="2.5"/><circle cx="12" cy="6.5" r="1.4" fill="white"/></svg></span>
+                <span>Info</span>
+              </div>
+              <div class="legend-item">
+                <span style="display:inline-block;width:24px;border-top:3px dashed #c62828;" aria-hidden="true"></span>
+                <span>Closed Road</span>
               </div>
             </div>
           </div>
@@ -348,6 +380,8 @@
 
     const CONFIG = {
       incidentLayerUrl: 'https://services2.arcgis.com/ilLrLpXfElYxSy9y/ArcGIS/rest/services/LPC_Evac_Zones_View/FeatureServer/0',
+      poiLayerUrl: 'https://services2.arcgis.com/ilLrLpXfElYxSy9y/ArcGIS/rest/services/EvacPOIs_view/FeatureServer/0',
+      roadLayerUrl: 'https://services2.arcgis.com/ilLrLpXfElYxSy9y/ArcGIS/rest/services/EvacPOIs_view/FeatureServer/1',
       pastIncidentsJsonUrl: 'pastincident.json',
       incidentField: 'incident',
       mapCenter: [-107.8801, 37.2753],
@@ -409,6 +443,89 @@
         });
         map.add(countyBoundaryLayer);
         
+        // The public POI service uses pointtype/roadstatus to mark inactive features.
+        const roadClosureLayer = new FeatureLayer({
+          url: CONFIG.roadLayerUrl,
+          title: 'Road Closures',
+          definitionExpression: "roadstatus = 'closed'",
+          outFields: ['roadstatus', 'label'],
+          refreshInterval: 1,
+          minScale: 0,
+          maxScale: 0,
+          renderer: { type: 'simple', symbol: { type: 'simple-line', color: '#c62828', width: 3, style: 'dash' } },
+          popupTemplate: {
+            title: 'Road Closure',
+            content: [{ type: 'fields', fieldInfos: [
+              { fieldName: 'label', label: 'Details' },
+              { fieldName: 'roadstatus', label: 'Road Status' }
+            ] }]
+          }
+        });
+        map.add(roadClosureLayer);
+
+        const poiLayer = new FeatureLayer({
+          url: CONFIG.poiLayerUrl,
+          title: 'Road Closures, Warnings & Info',
+          definitionExpression: "pointtype IN ('roadclosed', 'warning', 'info')",
+          outFields: ['pointtype', 'label'],
+          refreshInterval: 1,
+          minScale: 0,
+          maxScale: 0,
+          renderer: {
+            type: 'unique-value',
+            field: 'pointtype',
+            defaultSymbol: null,
+            uniqueValueInfos: [
+          {
+                    "value": "roadclosed",
+                    "label": "Road Closure",
+                    "symbol": {
+                              "type": "picture-marker",
+                              "url": "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22%20fill%3D%22%23c62828%22%20stroke%3D%22white%22%20stroke-width%3D%222%22%2F%3E%3Cpath%20d%3D%22M6%2012h12%22%20stroke%3D%22white%22%20stroke-width%3D%224%22%2F%3E%3C%2Fsvg%3E",
+                              "width": 22,
+                              "height": 22
+                    }
+          },
+          {
+                    "value": "warning",
+                    "label": "Warning",
+                    "symbol": {
+                              "type": "picture-marker",
+                              "url": "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M12%202L23%2022H1Z%22%20fill%3D%22%23ffd54f%22%20stroke%3D%22%235d4300%22%20stroke-width%3D%221.5%22%2F%3E%3Cpath%20d%3D%22M12%208v6%22%20stroke%3D%22%23302000%22%20stroke-width%3D%222.5%22%2F%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2218%22%20r%3D%221.4%22%20fill%3D%22%23302000%22%2F%3E%3C%2Fsvg%3E",
+                              "width": 22,
+                              "height": 22
+                    }
+          },
+          {
+                    "value": "info",
+                    "label": "Info",
+                    "symbol": {
+                              "type": "picture-marker",
+                              "url": "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22%20fill%3D%22%231769aa%22%20stroke%3D%22white%22%20stroke-width%3D%222%22%2F%3E%3Cpath%20d%3D%22M12%2010v8%22%20stroke%3D%22white%22%20stroke-width%3D%222.5%22%2F%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%226.5%22%20r%3D%221.4%22%20fill%3D%22white%22%2F%3E%3C%2Fsvg%3E",
+                              "width": 22,
+                              "height": 22
+                    }
+          }
+]
+          },
+          labelingInfo: [{
+            labelExpressionInfo: { expression: '$feature.label' },
+            labelPlacement: 'above-center',
+            minScale: 100000,
+            symbol: { type: 'text', color: '#1f2937', haloColor: '#ffffff', haloSize: 2,
+              font: { family: 'Arial', size: 10, weight: 'bold' } }
+          }],
+          labelsVisible: true,
+          popupTemplate: {
+            title: 'Public Safety Information',
+            content: [{ type: 'fields', fieldInfos: [
+              { fieldName: 'label', label: 'Details' },
+              { fieldName: 'pointtype', label: 'Point Type' }
+            ] }]
+          }
+        });
+        map.add(poiLayer);
+
         const pinsLayer = new GraphicsLayer({ title: 'Incident Locations' });
         map.add(pinsLayer);
 
@@ -436,7 +553,7 @@
         view.when(() => {
           view.on('pointer-move', e => {
             view.hitTest(e).then(res => {
-              const hasPin = res.results.some(r => r.graphic?.layer === pinsLayer && r.graphic?.attributes?.type === 'marker');
+              const hasPin = res.results.some(r => r.graphic?.layer === poiLayer || r.graphic?.layer === roadClosureLayer || (r.graphic?.layer === pinsLayer && r.graphic?.attributes?.type === 'marker'));
               view.container.style.cursor = hasPin ? 'pointer' : 'default';
             });
           });
@@ -533,6 +650,8 @@
 
         view.on('click', e => {
           view.hitTest(e).then(res => {
+            const topLayer = res.results.find(r => r.graphic)?.graphic.layer;
+            if (topLayer === poiLayer || topLayer === roadClosureLayer) return;
             const result = res.results.find(r => r.graphic?.layer === pinsLayer && r.graphic?.attributes?.incident);
             if (result) location.href = `evac.html?incident=${encodeURIComponent(result.graphic.attributes.incident)}`;
           });
