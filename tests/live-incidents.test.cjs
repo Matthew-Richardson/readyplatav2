@@ -33,16 +33,20 @@ test('all copied page scripts parse',()=>{
 });
 test('home queries live zones and replaces incident chips on refresh',async()=>{
   const h=harness('index.html',[
-    {features:[{attributes:{incident:'Current Incident'}},{attributes:{incident:'Current Incident'}}]},
+    {features:[{attributes:{incident:'Current Incident',Live:1}},{attributes:{incident:'Current Incident',Live:1}}]},
     {features:[]}
   ]);
   // A chip only needs DOM methods used by createChip.
   h.context.document.createElement=()=>({dataset:{},append(){},addEventListener(){}});
   await h.api.loadIncidents();
   assert.equal(h.requests[0].searchParams.get('where'),'Live = 1');
+  assert.equal(h.requests[0].searchParams.get('returnGeometry'),'false');
+  assert.equal(h.requests[0].searchParams.get('outFields'),'incident,Live');
+  assert.ok(h.requests[0].searchParams.get('_ts'));
   assert.equal(h.element('incidentCountBadge').textContent,1);
   assert.equal(h.element('incidentChips').children[0].children.length,1);
   await h.api.loadIncidents();
+  assert.notEqual(h.requests[0].searchParams.get('_ts'),h.requests[1].searchParams.get('_ts'));
   assert.equal(h.element('incidentCountBadge').textContent,0);
   assert.equal(h.element('incidentChips').children.length,0);
 });
@@ -80,4 +84,31 @@ test('map query layers and live lists use the visibility filter and refresh',()=
     assert.ok(s.includes('setInterval(refreshIncidents, 60000)'));
     assert.ok(s.includes('Live = 1 AND ${CONFIG.incidentField}'));
   }
+});
+
+test('home rejects inactive, null and missing Live flags even if returned by the service',async()=>{
+  const h=harness('index.html',[{features:[
+    {attributes:{incident:'Inactive',Live:0}},
+    {attributes:{incident:'Null flag',Live:null}},
+    {attributes:{incident:'Missing flag'}},
+    {attributes:{incident:null,Live:1}},
+    {attributes:{incident:'Current Incident',Live:1}},
+    {attributes:{incident:' current incident ',Live:1}}
+  ]}]);
+  h.context.document.createElement=()=>({dataset:{},append(){},addEventListener(){}});
+  await h.api.loadIncidents();
+  assert.equal(h.element('incidentCountBadge').textContent,1);
+  assert.equal(h.element('incidentChips').children[0].children.length,1);
+});
+test('an older active response cannot overwrite a newer inactive response',async()=>{
+  const h=harness('index.html',[]);
+  let release;
+  h.context.fetch=()=>new Promise(resolve=>{release=resolve;});
+  const old=h.api.loadIncidents();
+  h.context.fetch=async()=>({ok:true,json:async()=>({features:[]})});
+  await h.api.loadIncidents();
+  release({ok:true,json:async()=>({features:[{attributes:{incident:'Old incident',Live:1}}]})});
+  await old;
+  assert.equal(h.element('incidentCountBadge').textContent,0);
+  assert.equal(h.element('incidentChips').children.length,0);
 });
