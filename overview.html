@@ -241,29 +241,6 @@
 
     <main id="main-content">
     <div class="incident-panel">
-      <div class="past-incidents-card">
-        <div class="past-incidents-header">
-          <div class="past-incidents-icon-wrap">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-            </svg>
-          </div>
-          <div class="past-incidents-title-wrap">
-            <h2 class="past-incidents-title">Past Incidents</h2>
-            <div class="past-incidents-subtitle">Historical evacuation records</div>
-          </div>
-        </div>
-        <div id="pastIncidentsTable" class="past-incidents-body">
-          <div class="past-incidents-loading">Loading past incidents...</div>
-        </div>
-        <div class="past-incidents-disclaimer">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-          </svg>
-          <span>Even after evacuations are lifted, emergency personnel may still be active in the area. Please follow all posted signs and instructions.</span>
-        </div>
-      </div>
-
       <div class="status-timestamp">
         <span id="lastLoaded">Last loaded: --</span>
         &nbsp;•&nbsp;
@@ -382,7 +359,6 @@
       incidentLayerUrl: 'https://services2.arcgis.com/ilLrLpXfElYxSy9y/ArcGIS/rest/services/LPC_Evac_Zones_View/FeatureServer/0',
       poiLayerUrl: 'https://services2.arcgis.com/ilLrLpXfElYxSy9y/ArcGIS/rest/services/EvacPOIs_view/FeatureServer/0',
       roadLayerUrl: 'https://services2.arcgis.com/ilLrLpXfElYxSy9y/ArcGIS/rest/services/EvacPOIs_view/FeatureServer/1',
-      pastIncidentsJsonUrl: 'pastincident.json',
       incidentField: 'incident',
       mapCenter: [-107.8801, 37.2753],
       mapScale: 800000
@@ -403,7 +379,6 @@
       callerIdClose: $('callerIdClose'),
       lastLoaded: $('lastLoaded'),
       noIncidentsMsg: $('noIncidentsMsg'),
-      pastIncidentsTable: $('pastIncidentsTable'),
       announcementOverlay: $('announcementOverlay'),
       announcementClose: $('announcementClose'),
       announcementDismiss: $('announcementDismiss'),
@@ -687,51 +662,6 @@
       });
     }
 
-    async function loadPastIncidents() {
-      if (!DOM.pastIncidentsTable) return;
-
-      try {
-        const res = await fetch(CONFIG.pastIncidentsJsonUrl);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const incidents = await res.json();
-
-        if (!incidents.length) {
-          DOM.pastIncidentsTable.innerHTML = '<div class="past-incidents-loading">No past incidents recorded.</div>';
-          return;
-        }
-
-        incidents.sort((a, b) => new Date(b.liftedDate || b.startDate || 0) - new Date(a.liftedDate || a.startDate || 0));
-
-        const formatDate = val => {
-          if (!val) return '—';
-          const d = new Date(val);
-          return isNaN(d.getTime()) ? val : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        };
-
-        const rows = incidents.map(inc => `
-          <tr>
-            <td style="padding:10px 12px;border-bottom:1px solid ${BRAND.borderLight};font-weight:600;color:${BRAND.textHeading};">${escHTML(inc.name || '—')}</td>
-            <td style="padding:10px 12px;border-bottom:1px solid ${BRAND.borderLight};color:${BRAND.gray};text-align:center;">${escHTML(formatDate(inc.startDate))}</td>
-            <td style="padding:10px 12px;border-bottom:1px solid ${BRAND.borderLight};color:${BRAND.gray};text-align:center;">${escHTML(formatDate(inc.liftedDate))}</td>
-          </tr>`).join('');
-
-        DOM.pastIncidentsTable.innerHTML = `
-          <table style="width:100%;border-collapse:collapse;font-size:14px;">
-            <thead>
-              <tr style="background:${BRAND.grayLight};">
-                <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:${BRAND.textMuted};border-bottom:2px solid ${BRAND.border};">Incident Name</th>
-                <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:${BRAND.textMuted};border-bottom:2px solid ${BRAND.border};">Start Date</th>
-                <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:${BRAND.textMuted};border-bottom:2px solid ${BRAND.border};">Evacuations Lifted</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>`;
-      } catch (err) {
-        console.error('Error loading past incidents:', err);
-        DOM.pastIncidentsTable.innerHTML = '<div class="past-incidents-error">Unable to load past incidents.</div>';
-      }
-    }
-
     DOM.infoButton?.addEventListener('click', () => location.href = 'index.html');
     
     // Fullscreen toggle and map reset
@@ -816,7 +746,6 @@
     initScrollIndicator();
     initMapControls();
     initMap();
-    loadPastIncidents();
   })();
   </script>
 </body>
