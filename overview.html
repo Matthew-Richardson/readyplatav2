@@ -582,18 +582,41 @@
           .then(() => { refreshIncidents(); setInterval(refreshIncidents, 60000); })
           .catch(console.error);
 
+        let incidentListRequestId = 0;
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') refreshIncidents();
+        });
         function refreshIncidents() {
-          return incidentLayer.when().then(() => incidentLayer.queryFeatures({
+          const requestId = ++incidentListRequestId;
+          const params = new URLSearchParams({
             where: 'Live = 1',
-            returnGeometry: false,
-            outFields: [CONFIG.incidentField],
-            returnDistinctValues: true,
-            orderByFields: [CONFIG.incidentField]
-          }))
+            outFields: CONFIG.incidentField + ',Live',
+            returnDistinctValues: 'true',
+            returnGeometry: 'false',
+            f: 'json',
+            _ts: Date.now() + '-' + requestId
+          });
+          return fetch(`${CONFIG.incidentLayerUrl}/query?${params}`, { cache: 'no-store' })
+          .then(res => {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+          })
           .then(fs => {
+            if (requestId !== incidentListRequestId) return;
+            if (fs.error || !Array.isArray(fs.features) || fs.exceededTransferLimit)
+              throw new Error(fs.error?.message || 'Invalid or incomplete evacuation response');
+            DOM.noIncidentsMsg.querySelector('.incident-none-title').textContent = 'No Active Incidents in La Plata County';
             pinsLayer.removeAll();
             DOM.chipsEl.replaceChildren();
-            const names = (fs.features || []).map(f => f.attributes[CONFIG.incidentField]).filter(Boolean);
+            const seen = new Set();
+            const names = fs.features
+              .filter(f => f.attributes?.Live === 1 || f.attributes?.Live === '1')
+              .map(f => f.attributes?.[CONFIG.incidentField]?.trim())
+              .filter(name => {
+                if (!name || seen.has(name.toLowerCase())) return false;
+                seen.add(name.toLowerCase());
+                return true;
+              });
 
             DOM.countBadge.textContent = names.length;
             DOM.incidentPlural.textContent = names.length === 1 ? '' : 's';
@@ -617,7 +640,7 @@
             const pinPromises = names.map(incidentName => 
               incidentLayer.queryExtent({ where: `Live = 1 AND ${CONFIG.incidentField}='${incidentName.replace(/'/g, "''")}'` })
                 .then(result => {
-                  if (!result.extent) return;
+                  if (requestId !== incidentListRequestId || !result.extent) return;
                   const { center } = result.extent;
                   const point = new Point({ longitude: center.longitude, latitude: center.latitude, spatialReference: center.spatialReference });
 
@@ -643,8 +666,13 @@
             return Promise.all(pinPromises);
           })
           .catch(err => {
+            if (requestId !== incidentListRequestId) return;
+            pinsLayer.removeAll();
             console.error('Error loading incidents:', err);
-            DOM.countBadge.textContent = '0';
+            DOM.chipsEl.replaceChildren();
+            DOM.incidentsActive.classList.remove('has-incidents');
+            DOM.noIncidentsMsg.querySelector('.incident-none-title').textContent = 'Unable to load current incidents. Please try again or call (970) 385-8700.';
+            DOM.noIncidentsMsg.classList.add('is-visible');
           });
         }
 

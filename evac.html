@@ -404,20 +404,29 @@
       </div>`;
     };
 
+    let zoneRequestId = 0;
+    let statusRequestId = 0;
+
     // Data Loading
     async function loadEvacuationZones() {
       if (!INCIDENT) { showHelp(); return; }
 
+      const requestId = ++zoneRequestId;
       const where = `Live = 1 AND incident='${escapeQuery(INCIDENT)}'`;
-      const params = new URLSearchParams({ where, outFields: '*', f: 'json', returnGeometry: 'false' });
+      const params = new URLSearchParams({ where, outFields: '*', f: 'json', returnGeometry: 'false', _ts: Date.now() + '-' + requestId });
 
       try {
         const res = await fetch(`${CONFIG.incidentLayerUrl}/query?${params}`, { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
+        if (requestId !== zoneRequestId) return;
+        if (data.exceededTransferLimit) throw new Error('Incomplete evacuation response');
         if (data.error || !Array.isArray(data.features)) throw new Error(data.error?.message || 'Invalid evacuation response');
 
-        if (!data.features?.length) {
+        data.features = data.features.filter(f =>
+          (f.attributes?.Live === 1 || f.attributes?.Live === '1') &&
+          String(f.attributes?.incident || '').trim().toLowerCase() === INCIDENT.toLowerCase());
+        if (!data.features.length) {
           DOM.evacRow.innerHTML = `<div class="evac-box" style="background:#f3f4f6">
             <div class="evac-title">No Active Zones</div>
             <div class="evac-body">
@@ -439,6 +448,7 @@
           .filter(code => groups[code]?.length).map(code => buildBox(code, groups[code])).join('');
 
       } catch (err) {
+        if (requestId !== zoneRequestId) return;
         console.error('Error loading evacuation zones:', err);
         showError(`Failed to load evacuation data: ${err.message}`);
       }
@@ -549,23 +559,30 @@
 
     async function loadIncidentStatus() {
       if (!INCIDENT) return;
+      const requestId = ++statusRequestId;
 
       try {
         const activeParams = new URLSearchParams({
           where: `Live = 1 AND incident='${escapeQuery(INCIDENT)}'`,
-          returnCountOnly: 'true', f: 'json'
+          outFields: 'incident,Live', returnGeometry: 'false', f: 'json', _ts: Date.now() + '-' + requestId
         });
         const activeRes = await fetch(`${CONFIG.incidentLayerUrl}/query?${activeParams}`, { cache: 'no-store' });
         if (!activeRes.ok) throw new Error(`HTTP ${activeRes.status}`);
         const active = await activeRes.json();
-        if (active.error || !Number.isInteger(active.count)) throw new Error(active.error?.message || 'Invalid evacuation response');
-        if (!active.count) {
+        if (requestId !== statusRequestId) return;
+        if (active.error || !Array.isArray(active.features) || active.exceededTransferLimit) throw new Error(active.error?.message || 'Invalid evacuation response');
+        if (!active.features.some(f =>
+          (f.attributes?.Live === 1 || f.attributes?.Live === '1') &&
+          String(f.attributes?.incident || '').trim().toLowerCase() === INCIDENT.toLowerCase())) {
           DOM.incidentPanel.innerHTML = '<div class="status-html"><div class="status-card status-card-empty"><h2 class="status-card-title">No Active Incident</h2><p>No live zones are currently published for this incident.</p></div></div>';
           return;
         }
-        const res = await fetch(CONFIG.statusJsonUrl, { cache: 'no-store' });
+        const statusUrl = new URL(CONFIG.statusJsonUrl, location.href);
+        statusUrl.searchParams.set('_ts', Date.now() + '-' + requestId);
+        const res = await fetch(statusUrl.href, { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const incidents = await res.json();
+        if (requestId !== statusRequestId) return;
 
         const incidentLower = INCIDENT.toLowerCase();
         const data = incidents.find(inc => inc.name && inc.name.toLowerCase() === incidentLower);
@@ -584,6 +601,7 @@
         DOM.incidentPanel.innerHTML = `<div class="status-html">${buildStatusCard(data)}</div>
           <div class="status-timestamp">Last loaded: ${formatTimestamp()} &nbsp;•&nbsp; <span class="source-label">Source: La Plata County Office of Emergency Management</span></div>`;
       } catch (err) {
+        if (requestId !== statusRequestId) return;
         console.error('Error loading incident status:', err);
         DOM.incidentPanel.textContent = 'Error loading incident status.';
       }
@@ -670,17 +688,40 @@
           .then(() => { refreshIncidents(); setInterval(refreshIncidents, 60000); })
           .catch(console.error);
 
+        let incidentListRequestId = 0;
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') refreshIncidents();
+        });
         function refreshIncidents() {
-          return incidentLayer.when().then(() => incidentLayer.queryFeatures({
+          const requestId = ++incidentListRequestId;
+          const params = new URLSearchParams({
             where: 'Live = 1',
-            returnGeometry: false,
-            outFields: [CONFIG.incidentField],
-            returnDistinctValues: true,
-            orderByFields: [CONFIG.incidentField]
-          }))
+            outFields: CONFIG.incidentField + ',Live',
+            returnDistinctValues: 'true',
+            returnGeometry: 'false',
+            f: 'json',
+            _ts: Date.now() + '-' + requestId
+          });
+          return fetch(`${CONFIG.incidentLayerUrl}/query?${params}`, { cache: 'no-store' })
+          .then(res => {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+          })
           .then(fs => {
+            if (requestId !== incidentListRequestId) return;
+            if (fs.error || !Array.isArray(fs.features) || fs.exceededTransferLimit)
+              throw new Error(fs.error?.message || 'Invalid or incomplete evacuation response');
+            DOM.noIncidentsMsg.querySelector('.incident-none-title').textContent = 'No Active Incidents in La Plata County';
             DOM.chipsEl.replaceChildren();
-            const names = (fs.features || []).map(f => f.attributes[CONFIG.incidentField]).filter(Boolean);
+            const seen = new Set();
+            const names = fs.features
+              .filter(f => f.attributes?.Live === 1 || f.attributes?.Live === '1')
+              .map(f => f.attributes?.[CONFIG.incidentField]?.trim())
+              .filter(name => {
+                if (!name || seen.has(name.toLowerCase())) return false;
+                seen.add(name.toLowerCase());
+                return true;
+              });
 
             DOM.countBadge.textContent = names.length;
             DOM.incidentPlural.textContent = names.length === 1 ? '' : 's';
@@ -718,8 +759,12 @@
             }
           })
           .catch(err => {
+            if (requestId !== incidentListRequestId) return;
             console.error('Error loading incidents:', err);
-            DOM.countBadge.textContent = '0';
+            DOM.chipsEl.replaceChildren();
+            DOM.incidentsActive.classList.remove('has-incidents');
+            DOM.noIncidentsMsg.querySelector('.incident-none-title').textContent = 'Unable to load current incidents. Please try again or call (970) 385-8700.';
+            DOM.noIncidentsMsg.classList.add('is-visible');
           });
         }
       });
@@ -820,6 +865,9 @@
     loadEvacuationZones();
     loadIncidentStatus();
     setInterval(() => { loadEvacuationZones(); loadIncidentStatus(); }, 60000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') { loadEvacuationZones(); loadIncidentStatus(); }
+    });
     initMap();
   })();
   </script>

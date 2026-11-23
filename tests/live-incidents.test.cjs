@@ -20,8 +20,9 @@ function harness(page, replies, incident = 'Current Incident') {
   context.window=context;
   vm.runInContext(fs.readFileSync(path.join(root,'shared.js'),'utf8'),context);
   let script = [...fs.readFileSync(path.join(root,page),'utf8').matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].at(-1)[1];
-  script=script.slice(0,script.lastIndexOf('    // Initialize'));
-  script+='\n globalThis.testing = {loadIncidents: typeof loadIncidents === "function" ? loadIncidents : null, loadEvacuationZones: typeof loadEvacuationZones === "function" ? loadEvacuationZones : null, loadIncidentStatus: typeof loadIncidentStatus === "function" ? loadIncidentStatus : null}; })();';
+  script=script.slice(0, page === 'overview.html' ? script.lastIndexOf('    initCoderedOverlay(DOM);') : script.lastIndexOf('    // Initialize'));
+  script=script.replace('        function refreshIncidents() {', '        globalThis.refreshForTest = refreshIncidents;\n        function refreshIncidents() {');
+  script+='\n globalThis.testing = {initMap: typeof initMap === "function" ? initMap : null, loadIncidents: typeof loadIncidents === "function" ? loadIncidents : null, loadEvacuationZones: typeof loadEvacuationZones === "function" ? loadEvacuationZones : null, loadIncidentStatus: typeof loadIncidentStatus === "function" ? loadIncidentStatus : null}; })();';
   vm.runInContext(script,context);
   return {context, elements, element, requests, api:context.testing};
 }
@@ -56,7 +57,7 @@ test('service errors are not reported as no active incidents',async()=>{
   assert.match(h.element('noIncidentsMsg.title').textContent,/Unable to load/);
 });
 test('cards query LIVE and support every editor status, escaping incident names',async()=>{
-  const features=['Set','Go','Shelter-In-Place','Access Impact Area','Planning'].map(STATUS=>({attributes:{STATUS,zonename:'Zone <1>'}}));
+  const features=['Set','Go','Shelter-In-Place','Access Impact Area','Planning'].map(STATUS=>({attributes:{STATUS,zonename:'Zone <1>',Live:1,incident:"O'Brien"}}));
   const h=harness('evac.html',[{features}],"O'Brien");
   await h.api.loadEvacuationZones();
   assert.equal(h.requests[0].searchParams.get('where'),"Live = 1 AND incident='O''Brien'");
@@ -64,14 +65,14 @@ test('cards query LIVE and support every editor status, escaping incident names'
   assert.ok(h.element('evacRow').innerHTML.includes('Zone &lt;1&gt;'));
 });
 test('inactive incident URLs hide saved resource cards',async()=>{
-  const h=harness('evac.html',[{count:0}]);
+  const h=harness('evac.html',[{features:[]}]);
   await h.api.loadIncidentStatus();
   assert.equal(h.requests.length,1);
   assert.match(h.requests[0].searchParams.get('where'),/^Live = 1 AND/);
   assert.match(h.element('incidentPanel').innerHTML,/No Active Incident/);
 });
 test('live incidents can load their matching resource cards',async()=>{
-  const h=harness('evac.html',[{count:1},[{name:'Current Incident',road:'Current road information'}]]);
+  const h=harness('evac.html',[{features:[{attributes:{Live:1,incident:'Current Incident'}}]},[{name:'Current Incident',road:'Current road information'}]]);
   await h.api.loadIncidentStatus();
   assert.equal(h.requests.length,2);
   assert.match(h.element('incidentPanel').innerHTML,/Current road information/);
@@ -111,4 +112,46 @@ test('an older active response cannot overwrite a newer inactive response',async
   await old;
   assert.equal(h.element('incidentCountBadge').textContent,0);
   assert.equal(h.element('incidentChips').children.length,0);
+});
+
+for (const page of ['evac.html','overview.html']) {
+  test(page + ' removes inactive incidents and bypasses cached list requests', async()=>{
+    const h=harness(page,[
+      {features:[{attributes:{incident:'Current Incident',Live:1}},{attributes:{incident:'Inactive Incident',Live:0}}]},
+      {features:[]}
+    ], '');
+    const pending={then(){return this;},catch(){return this;}};
+    class Layer { constructor(options){Object.assign(this,options);} when(){return pending;} queryExtent(){return Promise.resolve({extent:null});} removeAll(){} addMany(){} }
+    class Map { constructor(){this.allLayers={forEach(){}};} add(){} load(){return pending;} }
+    class View { constructor(){this.ui={add(){}};} when(){return pending;} on(){} }
+    const Graphic=class{}, Widget=class{}, Point=class{};
+    h.context.window.innerWidth=1000;
+    h.context.require=(names,callback)=>{
+      if(page==='evac.html') callback(Map,View,Layer,Widget,Widget);
+      else callback(Map,View,Layer,Layer,Graphic,Widget,Point);
+    };
+    h.context.document.createElement=()=>({dataset:{},append(){},addEventListener(){}});
+    h.api.initMap();
+    await h.context.refreshForTest();
+    assert.equal(h.element('incidentCountBadge').textContent,1);
+    assert.equal(h.element('incidentChips').children[0].children.length,1);
+    assert.equal(h.requests[0].searchParams.get('returnGeometry'),'false');
+    assert.equal(h.requests[0].searchParams.get('outFields'),'incident,Live');
+    await h.context.refreshForTest();
+    assert.equal(h.element('incidentCountBadge').textContent,0);
+    assert.equal(h.element('incidentChips').children.length,0);
+    assert.notEqual(h.requests[0].searchParams.get('_ts'),h.requests[1].searchParams.get('_ts'));
+  });
+}
+test('inactive zone records cannot populate selected incident cards',async()=>{
+  const h=harness('evac.html',[{features:[{attributes:{incident:'Current Incident',Live:0,STATUS:'Go',zonename:'Inactive zone'}}]}]);
+  await h.api.loadEvacuationZones();
+  assert.match(h.element('evacRow').innerHTML,/No Active Zones/);
+  assert.ok(h.requests[0].searchParams.get('_ts'));
+});
+test('inactive resource responses are verified from actual flags',async()=>{
+  const h=harness('evac.html',[{features:[{attributes:{incident:'Current Incident',Live:0}}]}]);
+  await h.api.loadIncidentStatus();
+  assert.match(h.element('incidentPanel').innerHTML,/No Active Incident/);
+  assert.equal(h.requests.length,1);
 });
