@@ -344,11 +344,15 @@
     };
 
 
+    let incidentRequestId = 0;
     async function loadIncidents() {
+      const requestId = ++incidentRequestId;
       const params = new URLSearchParams({
         where: 'Live = 1',
-        outFields: CONFIG.incidentField,
+        outFields: CONFIG.incidentField + ',Live',
         returnDistinctValues: 'true',
+        returnGeometry: 'false',
+        _ts: Date.now() + '-' + requestId,
         f: 'json'
       });
 
@@ -357,9 +361,12 @@
         if (!res.ok) throw new Error('HTTP ' + res.status);
 
         const data = await res.json();
+        if (requestId !== incidentRequestId) return;
+        if (data.exceededTransferLimit) throw new Error('Incomplete evacuation response');
         if (data.error || !Array.isArray(data.features)) throw new Error(data.error?.message || 'Invalid evacuation response');
         const seen = new Set();
         const names = (data.features || [])
+          .filter(f => f.attributes?.Live === 1 || f.attributes?.Live === '1')
           .map(f => f.attributes?.[CONFIG.incidentField]?.trim())
           .filter(n => {
             if (!n) return false;
@@ -396,6 +403,7 @@
         }
         DOM.chipsEl.replaceChildren(frag);
       } catch (err) {
+        if (requestId !== incidentRequestId) return;
         console.error('Error loading incidents:', err);
         DOM.noIncidentsMsg.querySelector('.incident-none-title').textContent = 'Unable to load current incidents. Please try again or call (970) 385-8700.';
         DOM.incidentsActive.classList.remove('has-incidents');
@@ -468,6 +476,9 @@
     
     loadIncidents();
     setInterval(loadIncidents, 60000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') loadIncidents();
+    });
     initCoderedOverlay(DOM);
     initCallerIdOverlay(DOM);
     initDrillBanner(DOM);
